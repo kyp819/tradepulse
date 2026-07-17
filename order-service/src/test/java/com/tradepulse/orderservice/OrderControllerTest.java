@@ -37,8 +37,10 @@ class OrderControllerTest {
     private OrderService orderService;
 
     @MockBean
-    @MockBean
     private AuditLogRepository auditLogRepository;
+
+    @MockBean
+    private PositionRepository positionRepository;
 
     @Test
     void testCancelOrder_Success() throws Exception {
