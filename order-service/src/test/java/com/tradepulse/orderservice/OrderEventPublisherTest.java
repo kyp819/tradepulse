@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
 
 class OrderEventPublisherTest {
 
@@ -52,7 +53,8 @@ class OrderEventPublisherTest {
 
         publisher.publishOrderEvent("ORDER_PLACED", order);
 
-        verify(kafkaTemplate).send(any(String.class), eq("BTCUSDT"), any());
+        // ordersTopic is @Value-injected and is null in a plain unit test (no Spring context)
+        verify(kafkaTemplate).send(isNull(), eq("BTCUSDT"), any());
     }
 
     @Test
