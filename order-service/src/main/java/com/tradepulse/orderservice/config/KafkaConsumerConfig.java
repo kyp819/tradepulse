@@ -1,19 +1,27 @@
 package com.tradepulse.orderservice.config;
 
 import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.config.TopicBuilder;
-import org.springframework.kafka.core.ConsumerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.core.*;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.FixedBackOff;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @Configuration
 public class KafkaConsumerConfig {
+
+    @Value("${spring.kafka.bootstrap-servers:localhost:9092}")
+    private String bootstrapServers;
 
     @Bean
     public NewTopic ordersTopic() {
@@ -40,13 +48,24 @@ public class KafkaConsumerConfig {
     }
 
     @Bean
+    public KafkaTemplate<byte[], byte[]> dltKafkaTemplate() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
+
+        ProducerFactory<byte[], byte[]> pf = new DefaultKafkaProducerFactory<>(props);
+        return new KafkaTemplate<>(pf);
+    }
+
+    @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
             ConsumerFactory<String, String> consumerFactory,
-            KafkaTemplate<String, Object> kafkaTemplate) {
+            KafkaTemplate<byte[], byte[]> dltKafkaTemplate) {
 
-        // Always route failed messages to partition 0 of prices.DLT
+        // Route failed messages to <topic>.DLT partition 0, forwarding raw bytes
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
-                kafkaTemplate,
+                dltKafkaTemplate,
                 (record, ex) -> new TopicPartition(record.topic() + ".DLT", 0));
 
         // No retries — send to DLT immediately on first failure
