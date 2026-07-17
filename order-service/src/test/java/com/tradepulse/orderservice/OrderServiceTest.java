@@ -133,10 +133,101 @@ class OrderServiceTest {
         verify(auditLogRepository).save(any(AuditLog.class));
     }
 
+
     @Test
     void testCancelOrder_NotFound() {
         when(orderRepository.findById("non-existent")).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> orderService.cancelOrder("non-existent"));
     }
+
+    @Test
+    void testCancelOrder_AlreadyFilled_throws() {
+        Order filledOrder = Order.builder()
+                .id("456")
+                .symbol("BTCUSDT")
+                .side(OrderSide.BUY)
+                .type(OrderType.MARKET)
+                .quantity(BigDecimal.ONE)
+                .status(OrderStatus.FILLED)
+                .build();
+
+        when(orderRepository.findById("456")).thenReturn(Optional.of(filledOrder));
+
+        assertThrows(IllegalStateException.class, () -> orderService.cancelOrder("456"));
+    }
+
+    @Test
+    void testGetOrder_found() {
+        Order order = Order.builder().id("789").symbol("ETHUSDT").status(OrderStatus.PENDING).build();
+        when(orderRepository.findById("789")).thenReturn(Optional.of(order));
+
+        Order result = orderService.getOrder("789");
+
+        assertEquals("789", result.getId());
+    }
+
+    @Test
+    void testGetOrder_notFound_throws() {
+        when(orderRepository.findById("missing")).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> orderService.getOrder("missing"));
+    }
+
+    @Test
+    void testGetAllOrders_returnsList() {
+        Order o1 = Order.builder().id("1").symbol("BTCUSDT").status(OrderStatus.PENDING).build();
+        Order o2 = Order.builder().id("2").symbol("ETHUSDT").status(OrderStatus.FILLED).build();
+        when(orderRepository.findAll()).thenReturn(java.util.List.of(o1, o2));
+
+        java.util.List<Order> result = orderService.getAllOrders();
+
+        assertEquals(2, result.size());
+    }
+
+    @Test
+    void testPlaceOrder_nullIdempotencyKey_throws() {
+        Order request = Order.builder()
+                .symbol("BTCUSDT")
+                .side(OrderSide.BUY)
+                .type(OrderType.MARKET)
+                .quantity(BigDecimal.ONE)
+                .build();
+
+        assertThrows(IllegalArgumentException.class, () -> orderService.placeOrder(request, null));
+    }
+
+    @Test
+    void testPlaceOrder_limitOrder_missingPrice_throws() {
+        Order request = Order.builder()
+                .symbol("BTCUSDT")
+                .side(OrderSide.BUY)
+                .type(OrderType.LIMIT)
+                .quantity(BigDecimal.ONE)
+                .price(null)   // missing required price for LIMIT
+                .build();
+
+        when(valueOperations.get(anyString())).thenReturn(null);
+
+        assertThrows(IllegalArgumentException.class, () -> orderService.placeOrder(request, "limit-key"));
+    }
+
+    @Test
+    void testPlaceOrder_duplicateKey_successBranch_returnsExistingOrder() {
+        Order request = Order.builder()
+                .symbol("BTCUSDT")
+                .side(OrderSide.BUY)
+                .type(OrderType.MARKET)
+                .quantity(BigDecimal.ONE)
+                .build();
+
+        Order existing = Order.builder().id("existing-id").symbol("BTCUSDT").status(OrderStatus.PENDING).build();
+        when(valueOperations.get("idempotency:order:success-key")).thenReturn("SUCCESS:existing-id");
+        when(orderRepository.findById("existing-id")).thenReturn(Optional.of(existing));
+
+        Order result = orderService.placeOrder(request, "success-key");
+
+        assertEquals("existing-id", result.getId());
+    }
 }
+
