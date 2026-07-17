@@ -1,14 +1,16 @@
 package com.tradepulse.orderservice.config;
 
 import org.apache.kafka.clients.admin.NewTopic;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.config.TopicBuilder;
+import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
-import org.springframework.util.backoff.ExponentialBackOff;
+import org.springframework.util.backoff.FixedBackOff;
 
 @Configuration
 public class KafkaConsumerConfig {
@@ -30,14 +32,26 @@ public class KafkaConsumerConfig {
     }
 
     @Bean
-    public CommonErrorHandler errorHandler(KafkaTemplate<Object, Object> kafkaTemplate) {
-        // Publishes poison/failed messages to <originalTopic>.DLT
+    public NewTopic pricesDltTopic() {
+        return TopicBuilder.name("prices.DLT")
+                .partitions(3)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
+            ConsumerFactory<String, String> consumerFactory,
+            KafkaTemplate<Object, Object> kafkaTemplate) {
+        // Route failed messages immediately to <topic>.DLT with no retries
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafkaTemplate);
-        
-        // 3 retries (4 total attempts) with exponential backoff: 1000ms base, 2.0 multiplier
-        ExponentialBackOff backOff = new ExponentialBackOff(1000L, 2.0);
-        backOff.setMaxAttempts(4);
-        
-        return new DefaultErrorHandler(recoverer, backOff);
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(0L, 0L));
+
+        ConcurrentKafkaListenerContainerFactory<String, String> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory);
+        factory.setCommonErrorHandler(errorHandler);
+        return factory;
     }
 }
+

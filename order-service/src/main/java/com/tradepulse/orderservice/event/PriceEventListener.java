@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+
 @Component
 @Slf4j
 public class PriceEventListener {
@@ -26,19 +28,15 @@ public class PriceEventListener {
     }
 
     @KafkaListener(topics = "${app.kafka.topics.prices:prices}", groupId = "${spring.kafka.consumer.group-id:order-service-group}")
-    public void consumePrice(String message) {
-        try {
-            PriceEvent priceEvent = objectMapper.readValue(message, PriceEvent.class);
-            log.debug("Received price tick: {} @ {}", priceEvent.getSymbol(), priceEvent.getPrice());
+    public void consumePrice(String message) throws IOException {
+        PriceEvent priceEvent = objectMapper.readValue(message, PriceEvent.class);
+        log.debug("Received price tick: {} @ {}", priceEvent.getSymbol(), priceEvent.getPrice());
 
-            // 1. Update latest price cache
-            priceCacheService.updatePrice(priceEvent.getSymbol(), priceEvent.getPrice());
+        // 1. Update latest price cache
+        priceCacheService.updatePrice(priceEvent.getSymbol(), priceEvent.getPrice());
 
-            // 2. Run matching logic for pending orders
-            executionEngine.matchPendingOrders(priceEvent.getSymbol(), priceEvent.getPrice());
-        } catch (Exception e) {
-            log.error("Failed to process price event: {}", message, e);
-            throw new RuntimeException("Error processing price event", e);
-        }
+        // 2. Run matching logic for pending orders
+        executionEngine.matchPendingOrders(priceEvent.getSymbol(), priceEvent.getPrice());
     }
 }
+
