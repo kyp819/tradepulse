@@ -1,7 +1,7 @@
 package com.tradepulse.orderservice.config;
 
 import org.apache.kafka.clients.admin.NewTopic;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.apache.kafka.common.TopicPartition;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
@@ -34,7 +34,7 @@ public class KafkaConsumerConfig {
     @Bean
     public NewTopic pricesDltTopic() {
         return TopicBuilder.name("prices.DLT")
-                .partitions(3)
+                .partitions(1)
                 .replicas(1)
                 .build();
     }
@@ -42,9 +42,14 @@ public class KafkaConsumerConfig {
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
             ConsumerFactory<String, String> consumerFactory,
-            KafkaTemplate<Object, Object> kafkaTemplate) {
-        // Route failed messages immediately to <topic>.DLT with no retries
-        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafkaTemplate);
+            KafkaTemplate<String, Object> kafkaTemplate) {
+
+        // Always route failed messages to partition 0 of prices.DLT
+        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
+                kafkaTemplate,
+                (record, ex) -> new TopicPartition(record.topic() + ".DLT", 0));
+
+        // No retries — send to DLT immediately on first failure
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(0L, 0L));
 
         ConcurrentKafkaListenerContainerFactory<String, String> factory =
