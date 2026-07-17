@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: price-ingestion
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: price-ingestion
+  template:
+    metadata:
+      labels:
+        app: price-ingestion
+    spec:
+      containers:
+        - name: price-ingestion
+          image: tradepulse/price-ingestion:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+          env:
+            - name: SPRING_REDIS_HOST
+              value: redis
+            - name: SPRING_REDIS_PORT
+              value: "6379"
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: kafka:9092
