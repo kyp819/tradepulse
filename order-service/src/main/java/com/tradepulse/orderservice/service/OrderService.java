@@ -77,9 +77,17 @@ public class OrderService {
             }
         }
 
+        // Check database directly as fallback for idempotency
+        java.util.Optional<Order> existingOrder = orderRepository.findByIdempotencyKey(idempotencyKey);
+        if (existingOrder.isPresent()) {
+            log.info("Duplicate request detected in Database for key: {}", idempotencyKey);
+            return existingOrder.get();
+        }
+
         validateOrder(orderRequest);
 
         Order order = Order.builder()
+
                 .id(UUID.randomUUID().toString())
                 .idempotencyKey(idempotencyKey)
                 .symbol(orderRequest.getSymbol().toUpperCase())

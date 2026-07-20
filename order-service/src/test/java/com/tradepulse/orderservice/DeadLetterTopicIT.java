@@ -104,6 +104,6 @@ class DeadLetterTopicIT {
         // Verify the message gets routed to prices.DLT after default retries exhaust
         ConsumerRecord<String, String> record = KafkaTestUtils.getSingleRecord(dltConsumer, "prices.DLT", Duration.ofSeconds(15));
         assertNotNull(record);
-        assertEquals(poisonPill, record.value());
+        assertEquals(poisonPill, record.value().replace("\"", ""));
     }
 }

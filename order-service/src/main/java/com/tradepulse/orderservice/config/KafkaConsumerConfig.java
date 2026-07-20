@@ -48,22 +48,19 @@ public class KafkaConsumerConfig {
     }
 
     @Bean
-    public KafkaTemplate<byte[], byte[]> dltKafkaTemplate() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
-
-        ProducerFactory<byte[], byte[]> pf = new DefaultKafkaProducerFactory<>(props);
-        return new KafkaTemplate<>(pf);
+    public KafkaTemplate<Object, Object> dltKafkaTemplate(ProducerFactory<Object, Object> producerFactory) {
+        Map<String, Object> overrides = new HashMap<>();
+        overrides.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, org.apache.kafka.common.serialization.StringSerializer.class);
+        overrides.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, org.apache.kafka.common.serialization.StringSerializer.class);
+        return new KafkaTemplate<>(producerFactory, overrides);
     }
 
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
             ConsumerFactory<String, String> consumerFactory,
-            KafkaTemplate<byte[], byte[]> dltKafkaTemplate) {
+            KafkaTemplate<Object, Object> dltKafkaTemplate) {
 
-        // Route failed messages to <topic>.DLT partition 0, forwarding raw bytes
+        // Route failed messages to <topic>.DLT partition 0
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
                 dltKafkaTemplate,
                 (record, ex) -> new TopicPartition(record.topic() + ".DLT", 0));
@@ -77,5 +74,11 @@ public class KafkaConsumerConfig {
         factory.setCommonErrorHandler(errorHandler);
         return factory;
     }
+
+    @Bean
+    public KafkaTemplate<String, Object> kafkaTemplate(ProducerFactory<String, Object> producerFactory) {
+        return new KafkaTemplate<>(producerFactory);
+    }
 }
+
 

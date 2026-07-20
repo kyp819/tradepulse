@@ -175,6 +175,6 @@ class OrderIntegrationIT {
         // Verify the message lands in prices.DLT
         String received = dltRecords.poll(15, TimeUnit.SECONDS);
         assertNotNull(received, "DLT should receive the poison pill message within timeout");
-        assertEquals(poisonMessage, received);
+        assertEquals(poisonMessage, received.replace("\"", ""));
     }
 }

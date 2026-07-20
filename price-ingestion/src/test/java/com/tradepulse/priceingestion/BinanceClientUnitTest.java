@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 class BinanceClientUnitTest {
 
@@ -48,6 +48,122 @@ class BinanceClientUnitTest {
         handler.afterConnectionClosed(session, CloseStatus.NORMAL);
 
         // Verify that schedule reconnect was called and scheduled connect task
+        verify(executorService).schedule(any(Runnable.class), eq(5L), eq(TimeUnit.SECONDS));
+    }
+
+    @Test
+    void testWebSocketHandlerAfterConnectionEstablished() throws Exception {
+        PricePublisher publisher = Mockito.mock(PricePublisher.class);
+        ScheduledExecutorService executorService = Mockito.mock(ScheduledExecutorService.class);
+        WebSocketSession session = Mockito.mock(WebSocketSession.class);
+
+        BinanceWebSocketClient client = new BinanceWebSocketClient(
+                "ws://localhost:8080",
+                publisher,
+                executorService
+        );
+
+        WebSocketHandler handler = client.getWebSocketHandler();
+        handler.afterConnectionEstablished(session);
+
+        assertEquals(session, client.getCurrentSession());
+    }
+
+    @Test
+    void testWebSocketHandlerHandleTextMessage() throws Exception {
+        PricePublisher publisher = Mockito.mock(PricePublisher.class);
+        ScheduledExecutorService executorService = Mockito.mock(ScheduledExecutorService.class);
+        WebSocketSession session = Mockito.mock(WebSocketSession.class);
+
+        BinanceWebSocketClient client = new BinanceWebSocketClient(
+                "ws://localhost:8080",
+                publisher,
+                executorService
+        );
+
+        WebSocketHandler handler = client.getWebSocketHandler();
+        org.springframework.web.socket.TextMessage message = new org.springframework.web.socket.TextMessage("payload_data");
+        
+        handler.handleMessage(session, message);
+
+        verify(publisher).processAndPublish("payload_data");
+    }
+
+    @Test
+    void testWebSocketHandlerHandleTransportError() throws Exception {
+        PricePublisher publisher = Mockito.mock(PricePublisher.class);
+        ScheduledExecutorService executorService = Mockito.mock(ScheduledExecutorService.class);
+        WebSocketSession session = Mockito.mock(WebSocketSession.class);
+
+        BinanceWebSocketClient client = new BinanceWebSocketClient(
+                "ws://localhost:8080",
+                publisher,
+                executorService
+        );
+
+        WebSocketHandler handler = client.getWebSocketHandler();
+        handler.handleTransportError(session, new RuntimeException("connection failure"));
+
+        verify(session).close();
+    }
+
+    @Test
+    void testWebSocketHandlerHandleTransportErrorWithCloseException() throws Exception {
+        PricePublisher publisher = Mockito.mock(PricePublisher.class);
+        ScheduledExecutorService executorService = Mockito.mock(ScheduledExecutorService.class);
+        WebSocketSession session = Mockito.mock(WebSocketSession.class);
+        Mockito.doThrow(new RuntimeException("close failed")).when(session).close();
+
+        BinanceWebSocketClient client = new BinanceWebSocketClient(
+                "ws://localhost:8080",
+                publisher,
+                executorService
+        );
+
+        WebSocketHandler handler = client.getWebSocketHandler();
+        handler.handleTransportError(session, new RuntimeException("connection failure"));
+
+        verify(session).close(); // Should handle the exception gracefully without throwing it
+    }
+
+    @Test
+    void testConnectWithTestProfile() {
+        PricePublisher publisher = Mockito.mock(PricePublisher.class);
+        ScheduledExecutorService executorService = Mockito.mock(ScheduledExecutorService.class);
+        org.springframework.core.env.Environment env = Mockito.mock(org.springframework.core.env.Environment.class);
+        when(env.getActiveProfiles()).thenReturn(new String[]{"test"});
+
+        BinanceWebSocketClient client = new BinanceWebSocketClient(
+                "ws://localhost:8080",
+                publisher,
+                executorService
+        );
+        org.springframework.test.util.ReflectionTestUtils.setField(client, "env", env);
+
+        client.connect();
+
+        // Should return early and not attempt connection or scheduling reconnect
+        verifyNoInteractions(executorService);
+    }
+
+    @Test
+    void testConnectWithoutTestProfileThrowsExceptionAndSchedulesReconnect() {
+        PricePublisher publisher = Mockito.mock(PricePublisher.class);
+        ScheduledExecutorService executorService = Mockito.mock(ScheduledExecutorService.class);
+        org.springframework.core.env.Environment env = Mockito.mock(org.springframework.core.env.Environment.class);
+        when(env.getActiveProfiles()).thenReturn(new String[]{"prod"});
+
+        // Using invalid URL scheme to guarantee synchronous validation exception
+        BinanceWebSocketClient client = new BinanceWebSocketClient(
+                "invalid://url",
+                publisher,
+                executorService
+        );
+        org.springframework.test.util.ReflectionTestUtils.setField(client, "env", env);
+
+        client.connect();
+
+        // Verify that schedule reconnect was called
         verify(executorService).schedule(any(Runnable.class), eq(5L), eq(TimeUnit.SECONDS));
     }
 }
